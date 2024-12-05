@@ -4,7 +4,7 @@
 
 
 (def input
-  (->> "days/day2/input"
+  (->> "solutions/day2/input"
     slurp
     string/trim 
     string/split-lines

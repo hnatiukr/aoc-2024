@@ -1,7 +1,7 @@
 (ns day3.solution)
 
 
-(def input (slurp "days/day3/input"))
+(def input (slurp "solutions/day3/input"))
 
 
 (def part1 
