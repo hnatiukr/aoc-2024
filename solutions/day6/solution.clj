@@ -1,128 +1,101 @@
 (ns day6.solution
-  (:require 
+  (:require
    [clojure.string :as string]))
 
 
 (def ^:private input
   (-> "solutions/day6/input"
     slurp
-    string/trim 
+    string/trim
     string/split-lines))
 
 
-(defn- parse-graph [input]
-  (let [cells (mapv #(string/split % #"") input)
-        cells (map-indexed (fn [row-idx row] (map-indexed (fn [col-idx cell] [[row-idx col-idx] cell]) row)) cells)
-        cells (apply concat cells)
-        graph (into {} cells)]
-    graph))
+(def ^:private read-map
+  "Read file to 2D matrix of symbols"
+  (mapv vec input))
 
 
-(defn- turn-right [dir]
-  (condp = dir 
-    "^" ">"
-    ">" "v"
-    "v" "<"
-    "<" "^"))
+(def ^:private caret-direction
+  "Mapping from caret symbol to vector direction"
+  {\^ [0 -1] 
+   \> [1 0] 
+   \v [0 1] 
+   \< [-1 0]})
 
 
-(defn- move [[x y] dir]
-  (condp = dir 
-    "^" [(- x 1) y]
-    ">" [x (+ y 1)]
-    "v" [(+ x 1) y]
-    "<" [x (- y 1)]))
+(defn- add-vec
+  "Add two vectors"
+  [v1 v2]
+  (mapv + v1 v2))
 
 
-(defn- find-guard [graph]
-  (let [[[x y] dir] (first (filterv #(= (second %) "^") graph))]
-    {:coord [x y] 
-     :dir 	dir}))
+(defn- get-2d
+  "Get m[x][y]"
+  [m [x y]]
+  (get-in m [y x]))
 
 
-(defn- next-step [guard graph]
-  (let [next-coord (move (:coord guard) (:dir guard))
-        cell 	   (get graph next-coord)]
-    (cond
-      (= cell "#") (assoc guard :dir (turn-right (:dir guard)))
-      (= cell ".") (assoc guard :coord next-coord)
-      (= cell "^") (assoc guard :coord next-coord)
-      :else 	   nil)))
+(defn- set-2d
+  "Set m[x][y] = val"
+  [m [x y] val]
+  (assoc-in m [y x] val))
 
 
-(defn- find-obstructions [graph]
-  (sort-by second (sort-by first (filterv #(= "#" (get graph %)) (keys graph)))))
+(defn- find-guard
+  "Find the caret in the matrix and return its position and direction."
+  [m]
+  (first (for [y     (range (count m))
+               x     (range (count (m 0)))
+               :let  [dir (caret-direction (get-2d m [x y]))]
+               :when dir]
+           {:position  [x y] 
+            :direction dir})))
 
 
-(defn- next-far-step [guard graph obstructions]
-  (let [dir 	   (:dir guard)
-        [gx gy]    (:coord guard)
-        next-coord (condp = dir
-                     "^" (let [next (filterv (fn [[x y]] (and (= gy y) (< x gx))) obstructions)
-                               next (if (empty? next) nil (inc (first (last next))))]
-                           [next gy])
-                     ">" (let [next (filterv (fn [[x y]] (and (= gx x) (> y gy))) obstructions)
-                               next (if (empty? next) nil (dec (second (first next))))]
-                           [gx next])
-                     "v" (let [next (filterv (fn [[x y]] (and (= gy y) (> x gx))) obstructions)
-                               next (if (empty? next) nil (dec (first (first next))))]
-                           [next gy])
-                     "<" (let [next (filterv (fn [[x y]] (and (= gx x) (< y gy))) obstructions)
-                               next (if (empty? next) nil (inc (second (last next))))]
-                           [gx next]))]
-    (if (contains? graph next-coord)
-      {:coord next-coord 
-       :dir   (turn-right dir)}
-      nil)))
+(defn- rotate
+  "Rotate guard to the right"
+  [guard]
+  (case (:direction guard)
+    [0 -1] (assoc guard :direction [1 0])
+    [1 0]  (assoc guard :direction [0 1])
+    [0 1]  (assoc guard :direction [-1 0])
+    [-1 0] (assoc guard :direction [0 -1])))
 
 
-(defn- find-path [graph]
-  (let [guard (find-guard graph)]
-    (loop [prev-guard guard
-           path 	  [guard]]
-      (let [next-guard (next-step prev-guard graph)]
-        (if (nil? next-guard)
-          (mapv :coord path)
-          (recur next-guard (conj path next-guard)))))))
+(defn- step
+  "Make guard step forward"
+  [guard]
+  (update guard :position add-vec (:direction guard)))
 
 
-(defn- cycle? [path]
-  (let [coords-freq (frequencies path)]
-    (> (apply max (vals coords-freq)) 2)))
-
-
-(defn- leads-to-cycle? [graph]
-  (let [guard 		 (find-guard graph)
-        obstructions (find-obstructions graph)]
-    (loop [prev-guard guard
-           path 	  [guard]]
-      (let [next-guard (next-far-step prev-guard graph obstructions)]
-        (cond
-          (nil? next-guard) 		  false
-          (cycle? (mapv :coord path)) true
-          :else 					  (recur next-guard (conj path next-guard)))))))
+(defn- run
+  "Run guard from staring position `guard`, in given matrix `m`
+   Returns set of visited guard positions (alongside directions)
+   or nil if there is a loop"
+  [m visited guard]
+  (let [next-position (add-vec (:position guard) (:direction guard))
+        next-char     (get-2d m next-position)
+        new-visited   (conj visited guard)]
+    (cond (contains? visited guard) nil ; loop found
+      (= next-char nil) new-visited ; end of matrix, guard finished
+      (= next-char \#)  (recur m new-visited (rotate guard)) ; rotate
+      :else             (recur m new-visited (step guard))))) ; just go forward
 
 
 (def part1 
-  (let [graph (parse-graph input)
-        path  (find-path graph)]
-    (count (set path))))
+  (->> (run read-map #{} (find-guard read-map))
+    (map :position)
+    set
+    count))
 
 
-(def part2 
-  (let [graph (parse-graph input)
-        guard (find-guard graph)
-        path  (vec (set (find-path graph)))
-        path  (filterv #(not= (:coord guard) %) path)]
-    (loop [positions   path
-           cycle-count 0]
-      (if (empty? positions)
-        cycle-count
-        (let [position  (first positions)
-              new-graph (assoc graph position "#")]
-          (if (leads-to-cycle? new-graph)
-            (recur (rest positions) (inc cycle-count))
-            (recur (rest positions) cycle-count)))))))
+(def part2
+  (let [guard     (find-guard read-map)
+        obstacles (disj (set (map :position (run read-map #{} guard))) (:position guard))]
+    (->> obstacles
+      ; remain only those obstacles, that generate loop (run returns nil)
+      (remove #(run (set-2d read-map % \#) #{} guard))
+      count)))
 
 
 (defn -main []
