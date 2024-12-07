@@ -3,7 +3,7 @@
    [clojure.string :as string]))
 
 
-(def input
+(def ^:private input
   (-> "solutions/day1/input"
     slurp
     string/trim 
