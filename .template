@@ -10,11 +10,11 @@
     string/split-lines))
 
 
-(def part1 
+(def ^:private part1 
   nil)
 
 
-(def part2 
+(def ^:private part2 
   nil)
 
 
